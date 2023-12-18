@@ -1,4 +1,4 @@
-name: tomorecon
+name: tomorecon-meta
 channels:
   - defaults
   - nvidia

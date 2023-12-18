@@ -3,7 +3,8 @@
 .DS_Store
 /data
 /outputs
-/experiments/outputs
+/output
+/experiments/outputs/
 /wandb
 /figures
 .vscode

@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset.naf_dataset import SingleVolume
-from nef.instance.hashnet import HashNet
+from nef_old.instance.hashnet import HashNet
 from nn_utils.checkpointer import CheckpointMaker
 from nn_utils.early_stopping import EarlyStopping
 from nn_utils.loggers import SingleCBCTLogger

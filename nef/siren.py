@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from nef.instance.neural_field_base import NeuralFieldBase
+from nef.neural_field_base import NeuralFieldBase
 
 
 class Siren(NeuralFieldBase):
@@ -25,28 +25,30 @@ class Siren(NeuralFieldBase):
         # Store siren parameters
         self.omega = omega
 
-        # Create network
-        self.net = nn.ModuleList()
-
         # First layer
-        self.net.append(nn.Linear(in_features=num_in, out_features=num_hidden_out))
-        self.net.append(self.Sine(self.omega))
+        self.first_layer = nn.Sequential(
+            nn.Linear(in_features=num_in, out_features=num_hidden_out),
+            self.Sine(self.omega),
+        )
+
+        # Create network
+        self.hidden_layers = nn.ModuleList()
 
         # Hidden layers
         for i in range(self.num_layers):
-            self.net.append(nn.Linear(in_features=num_hidden_in, out_features=num_hidden_out))
-            self.net.append(self.Sine(self.omega))
+            self.hidden_layers.append(nn.Linear(in_features=num_hidden_in, out_features=num_hidden_out))
+            self.hidden_layers.append(self.Sine(self.omega))
 
         # Output layer
         self.final_linear = nn.Linear(in_features=num_hidden_in, out_features=num_out)
         self.sigmoid = nn.Sigmoid()
 
-        # Apply initialization
-        self.net.apply(partial(self.sine_init, omega=self.omega))
-        self.final_linear.apply(partial(self.sine_init, omega=self.omega))
-
         # Apply specialized first layer initialization
-        self.net[0].apply(self.first_layer_sine_init)
+        self.first_layer.apply(self.first_layer_sine_init)
+
+        # Apply initialization
+        self.hidden_layers.apply(partial(self.sine_init, omega=self.omega))
+        self.final_linear.apply(partial(self.sine_init, omega=self.omega))
 
     class Sine(nn.Module):
         def __init__(self, omega):
@@ -74,7 +76,8 @@ class Siren(NeuralFieldBase):
                 )
 
     def forward(self, x, **kwargs):
-        for m in self.net:
+        x = self.first_layer(x)
+        for m in self.hidden_layers:
             x = m(x)
         x = self.final_linear(x)
         x = self.final_activation(x)

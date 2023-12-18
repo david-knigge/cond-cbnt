@@ -31,7 +31,7 @@ from dataset.cbct_recon_dataset import MultiVolumeConebeamReconDataset
 from dataset.cbct_dataset import MultiVolumeConebeamDataset
 
 # Nefs
-from nef import get_neural_field
+from nef.modulation import get_modulated_neural_field
 from nn_utils.checkpointer import CheckpointMaker
 from nn_utils.loggers import MultiCBCTReconLogger, MultiCBCTLogger
 from nn_utils.early_stopping import EarlyStopping
@@ -101,7 +101,7 @@ def main(cfg):
     log.info(f"Using device: {device}.")
 
     # Initialize logging.
-    wandb.login(key="da05829c15c052ce21ea676a2050405df8abf981")
+    # wandb.login(key="da05829c15c052ce21ea676a2050405df8abf981")
     wandb.init(
         project=cfg.project_name,
         name=cfg.run_name,
@@ -117,7 +117,7 @@ def main(cfg):
     train_loader = get_dataloader(cfg.dataset, cfg.training, "train")
 
     # Construct neural field model
-    model = get_neural_field(
+    model = get_modulated_neural_field(
         nef_cfg=cfg.nef,
         num_in=train_loader.dataset.dim,
         num_out=train_loader.dataset.channels,
@@ -280,24 +280,32 @@ def train(
     model.train()
 
     optimizer = get_optimizer(
-        optimizer_cfg,
-        set(model.parameters()) - set(model.conditioning.parameters()),
+        optimizer_cfg.nef,
+        model.nef.parameters(),
         lr=training_cfg.lr,
     )
     second_optim = get_optimizer(
-        optimizer_cfg, model.conditioning.parameters(), lr=training_cfg.lr_conditioning
+        optimizer_cfg.conditioning,
+        model.conditioning.parameters(),
+        lr=training_cfg.lr_conditioning
     )
-    optimizers = [optimizer, second_optim]
+    optimizers = {
+        "shared_nef_optimizer": optimizer,
+        "conditioning_optimizer": second_optim
+    }
 
     max_time = training_cfg.max_time
     start_time = time.time()
     interrupted = False
     epoch = 0
+    loss = torch.zeros(1)
     while not interrupted:
         if epoch > training_cfg.epochs:
             break
         # training loop dataloader with progress bar using tqdm
-        for i, batch in enumerate(tqdm(train_loader, desc="Training")):
+        t = tqdm(train_loader, desc=f"Training - Epoch {epoch} - Loss {loss.item():.5f}")
+        for i, batch in enumerate(t):
+
             # Get batch of projections
             coords, target_pixels, patient_idx = batch
             coords = coords.to(device)
@@ -306,24 +314,33 @@ def train(
 
             # Get projection data
             out = model(coords, patient_idx)
+
             # compute the loss and update the model
             loss = torch.nn.functional.mse_loss(out[:, 0], target_pixels)
 
-            for optim in optimizers:
-                optim.zero_grad()
+            # normalize the loss to account for gradient accumulation
+            loss /= training_cfg.gradient_accumulation_steps
             loss.backward()
+
+            # Update tqdm
+            t.set_description(f"Training - Epoch {epoch} - Loss {loss.item():.5f}")
 
             # Perform gradient clipping
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-            for optim in optimizers:
-                optim.step()
+            # if we have accumulated enough gradients, update the model
+            if (i + 1) % training_cfg.gradient_accumulation_steps == 0 or i == len(train_loader) - 1:
+                optimizers["shared_nef_optimizer"].step()
+                optimizers["conditioning_optimizer"].step()
+
+                optimizers["shared_nef_optimizer"].zero_grad(set_to_none=True)
+                optimizers["conditioning_optimizer"].zero_grad(set_to_none=True)
+
             # scheduler.step(loss)
             # second_scheduler.step(loss)
-
             logger.train_step(model, loss)
             checkpointer.step(
-                model, optimizers[0], loss.detach(), metric=-logger.best_psnr
+                model, optimizers["shared_nef_optimizer"], loss.detach(), metric=-logger.best_psnr
             )
 
             # elapsed time in seconds

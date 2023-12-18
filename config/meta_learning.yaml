@@ -1,0 +1,44 @@
+# @package _global_
+defaults:
+  - recon_pretraining
+  - _self_
+
+# meta learning initialization
+meta_learning:
+  do: True
+  lr: 1e-5 # Learning rate for the the meta-learned nef
+  lr_conditioning_inner: 5e-2  # Big ol' learning rate for the conditioning network
+  lr_conditioning_outer: 5e-4 # Smaller learning rate for the outer loop, needs to be pretty big since its gradient signal is pretty weak after the inner loop
+  outer_batch_size: 8 # Number of patients to sample for the outer loop
+  inner_steps: 12
+  epochs: 10000
+  max_iters: None
+  max_time: 6000000 # in seconds
+  max_epochs: 1000000
+
+
+optimizer:
+  nef:
+    type: "adam"
+    betas: [0.9, 0.999]
+    eps: 1e-8
+    weight_decay: 0.0
+  conditioning:
+    outer_optimizer:
+      type: "adam"
+      betas: [0.9, 0.999]
+      eps: 1e-8
+      weight_decay: 0.0
+    inner_optimizer:
+      type: "sgd"
+      momentum: 0.0
+      nesterov: False
+      weight_decay: 0.0
+
+
+# Change the logging slightly because we do a bunch of inner loop stuff every logging step.
+log_steps:
+  volumes: 10
+  loss: 50
+  metrics: 10
+  gradients: 10

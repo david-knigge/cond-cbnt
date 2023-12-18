@@ -8,7 +8,7 @@ from torch.autograd import Function
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.utils.cpp_extension import load
 
-from nef.instance.neural_field_base import NeuralFieldBase
+from nef.neural_field_base import NeuralFieldBase
 
 # Cuda backend
 _src_path = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +46,7 @@ class _hash_encode(Function):
 
         inputs = inputs.contiguous()
         embeddings = embeddings.contiguous()
-        offsets = offsets.contiguous().to(inputs.device)
+        offsets = offsets.contiguous()#.to(inputs.device)
 
         B, D = inputs.shape  # batch size, coord dim
         L = offsets.shape[0] - 1  # level
@@ -150,7 +150,7 @@ class HashEncoder(nn.Module):
             )
 
         # allocate parameters
-        self.offsets = []
+        offsets = []
         offset = 0
         self.max_params = 2**log2_hashmap_size
         for i in range(num_levels):
@@ -158,10 +158,10 @@ class HashEncoder(nn.Module):
             params_in_level = min(
                 self.max_params, (resolution + 1) ** input_dim
             )  # limit max number
-            self.offsets.append(offset)
+            offsets.append(offset)
             offset += params_in_level
-        self.offsets.append(offset)
-        self.offsets = torch.from_numpy(np.array(self.offsets, dtype=np.int32))
+        offsets.append(offset)
+        self.register_buffer("offsets", torch.from_numpy(np.array(offsets, dtype=np.int32)))
 
         self.n_params = self.offsets[-1] * level_dim
 
@@ -219,45 +219,46 @@ class HashNet(NeuralFieldBase):
         level_dim: int,
         base_resolution: int,
         log2_max_params_per_level: int,
-        final_act: Literal["sigmoid", "tanh", "relu", "none"] = "sigmoid",
+        final_act: Literal["sigmoid", "tanh", "relu", "none"] = "none",
         skip_conn: List[int] = [],  # empty for no skip connections
     ):
         super().__init__(
             num_in=num_in, num_layers=num_layers, num_hidden_in=num_hidden_in, num_hidden_out=num_hidden_out, num_out=num_out
         )
-        self.skip_conn = skip_conn
+
+        if not skip_conn:
+            self.skip_conn = []
+        else:
+            self.skip_conn = skip_conn
 
         # Create network
-        self.encoder = HashEncoder(
+        self.hash_encoder = HashEncoder(
             input_dim=self.num_in,
             num_levels=num_levels,
             level_dim=level_dim,
             base_resolution=base_resolution,
             log2_hashmap_size=log2_max_params_per_level,
         )
-
-        self.net = nn.ModuleList()
-
-        # Add first hidden layer, this maps from encoding to hidden
-        self.net.append(
-            nn.Linear(in_features=num_levels * level_dim, out_features=num_hidden_out)
+        self.encoder_linear = nn.Sequential(
+            nn.Linear(in_features=num_levels * level_dim, out_features=num_hidden_out),
+            nn.LeakyReLU(),
         )
-        self.net.append(nn.LeakyReLU())
 
         # Hidden layers
+        self.hidden_layers = nn.ModuleList()
         for i in range(self.num_layers):
-            if i + 1 in skip_conn:
-                self.net.append(
+            if i + 1 in self.skip_conn:
+                self.hidden_layers.append(
                     nn.Linear(
                         in_features=num_hidden_in + num_levels * level_dim,
                         out_features=num_hidden_out,
                     )
                 )
             else:
-                self.net.append(
+                self.hidden_layers.append(
                     nn.Linear(in_features=num_hidden_in, out_features=num_hidden_out)
                 )
-            self.net.append(nn.LeakyReLU())
+            self.hidden_layers.append(nn.LeakyReLU())
 
         # Output layer
         self.final_linear = nn.Linear(in_features=num_hidden_in, out_features=num_out)
@@ -267,20 +268,21 @@ class HashNet(NeuralFieldBase):
             self.final_activation = nn.Tanh()
         elif final_act == "relu":
             self.final_activation = nn.LeakyReLU()
-        elif final_act == "none":
+        elif not final_act:
             self.final_activation = nn.Identity()
         else:
             raise ValueError(f"Unknown final activation {final_act}")
 
         # print the network 
-#        print(self)
+        # print(self)
 
     def forward(self, x):
-        x = enc_out = self.encoder(x)
-        for i, m in enumerate(self.net):
+        x = enc_out = self.encoder_linear(self.hash_encoder(x))
+        for i, m in enumerate(self.hidden_layers):
             x = m(x)
             if i in self.skip_conn:
                 x = torch.cat([x, enc_out], dim=-1)
 
         x = self.final_linear(x)
         return x
+

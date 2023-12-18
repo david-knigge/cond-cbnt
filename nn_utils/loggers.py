@@ -432,7 +432,7 @@ class MultiCBCTLogger(Logger):
         logging_step = (
             self.train_step_number if stage == "train" else self.val_step_number
         )
-        num_samples = min(self.dataset.num_patients, 5)
+        num_samples = min(self.dataset.num_patients, 3)
         device = next(model.parameters()).device
         selected_samples = torch.arange(num_samples).to(device)
         if self.dataset.volume_id is not None:
@@ -536,16 +536,18 @@ class MultiCBCTReconLogger(Logger):
         for params in model.conditioning.parameters():
             if params.grad is not None:
                 norm_grads.append(params.grad.norm())
-        norm_grads = torch.stack(norm_grads).mean()
+        if norm_grads:
+            norm_grads = torch.stack(norm_grads).mean()
 
-        wandb.log({"norm_grads_conditioning": norm_grads}, step=self.train_step_number)
+            wandb.log({"norm_grads_conditioning": norm_grads}, step=self.train_step_number)
 
         # Compute gradients from the rest of the network
         norm_grads = []
         for params in model.parameters():
             if params.grad is not None:
                 norm_grads.append(params.grad.norm())
-        norm_grads = torch.stack(norm_grads).mean()
+        if norm_grads:
+            norm_grads = torch.stack(norm_grads).mean()
 
         wandb.log({"norm_grads": norm_grads}, step=self.train_step_number)
 
@@ -562,7 +564,7 @@ class MultiCBCTReconLogger(Logger):
             self.train_step_number if stage == "train" else self.val_step_number
         )
         device = next(model.parameters()).device
-        num_samples = min(self.dataset.num_patients, 5)
+        num_samples = min(self.dataset.num_patients, 3)
         selected_samples = torch.arange(num_samples).to(device)
 
         acc_psnr = []
@@ -635,7 +637,7 @@ class MultiCBCTReconLogger(Logger):
         logging_step = (
             self.train_step_number if stage == "train" else self.val_step_number
         )
-        num_samples = min(self.dataset.num_patients, 5)
+        num_samples = min(self.dataset.num_patients, 3)
         selected_samples = torch.arange(num_samples)
         device = next(model.parameters()).device
 

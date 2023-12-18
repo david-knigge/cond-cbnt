@@ -33,6 +33,5 @@ class NeuralFieldBase(nn.Module):
         else:
             raise ValueError(f"Unknown final activation {final_act}")
 
-
     def forward(self, coords: torch.Tensor, **kwargs):
         raise NotImplementedError("Neural Field forward pass needs to be implemented.")

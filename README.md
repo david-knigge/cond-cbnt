@@ -37,3 +37,7 @@ To reproduce the training of the model used in this paper, use the following com
 ```bash
 python experiments/train_validate.py run_name=train project_name=reproduce dataset.path=path_to_recon_volumes dataset.original_volumes_path=path_to_original_volumes val_dataset.path=path_to_original_volumes dataset.name=reconstructions val_dataset.name=projection nef.type=Hash nef.num_hidden=128 nef.num_layers=2 nef.final_act=relu training.lr=5e-05 nef.conditioning.spatial_cfg.type=Hash nef.conditioning.spatial_cfg.num_layers=2 nef.conditioning.spatial_cfg.num_hidden=128 training.max_time=3600000000 dataset.num_vols=200 hydra.run.dir=path_to_output
 ```
+
+```bash
+python experiments/pretrain_validate_recon.py run_name=train project_name=reproduce dataset.path=/media/davidknigge/hard-disk1/storage/nef-ct-data/recons/ dataset.original_volumes_path=/media/davidknigge/hard-disk1/storage/nef-ct-data/volumes/ val_dataset.path=/media/davidknigge/hard-disk1/storage/nef-ct-data/recons/ dataset.name=reconstructions val_dataset.name=projection nef.type=Hash nef.num_hidden=128 nef.num_layers=2 nef.final_act=relu training.lr=5e-05 nef.conditioning.spatial_cfg.type=Hash nef.conditioning.spatial_cfg.num_layers=2 nef.conditioning.spatial_cfg.num_hidden=128 training.max_time=3600000000 dataset.num_vols=200 hydra.run.dir=outputs
+```

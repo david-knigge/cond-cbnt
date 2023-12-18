@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from nef.instance.neural_field_base import NeuralFieldBase
+from nef.neural_field_base import NeuralFieldBase
 
 
 class MLP(NeuralFieldBase):
@@ -22,7 +22,7 @@ class MLP(NeuralFieldBase):
         )
 
         # Create network
-        self.linears = nn.ModuleList()
+        self.hidden_layers = nn.ModuleList()
         self.activations = nn.ModuleList()
 
         # Add first hidden layer
@@ -30,15 +30,15 @@ class MLP(NeuralFieldBase):
 
         # Hidden layers
         for i in range(self.num_layers):
-            self.linears.append(nn.Linear(in_features=num_hidden_in, out_features=num_hidden_out))
-            self.activations.append(nn.GELU(approximate='tanh'))
+            self.hidden_layers.append(nn.Linear(in_features=num_hidden_in, out_features=num_hidden_out))
+            self.activations.append(nn.GELU())
 
         # Output layer
         self.final_linear = nn.Linear(in_features=num_hidden_out, out_features=num_out)
 
     def forward(self, x):
         x = self.first_layer(x)
-        for m, a in zip(self.linears, self.activations):
+        for m, a in zip(self.hidden_layers, self.activations):
             x = a(m(x))
         x = self.final_linear(x)
         x = self.final_activation(x)
